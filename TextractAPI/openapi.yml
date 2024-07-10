@@ -1,0 +1,79 @@
+openapi: 3.0.0
+info:
+    title: Text Extraction API
+    version: 1.0.0
+paths:
+    /files:
+        post:
+            summary: Upload a file for text extraction
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            properties:
+                                file:
+                                    type: string
+                                    format: base64
+                                    description: Base64 encoded file content
+                                callback_url:
+                                    type: string
+                                    description: URL to send the callback to once the text extraction is complete
+            responses:
+                '200':
+                    description: File uploaded successfully
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    file_id:
+                                        type: string
+                                        description: Unique identifier for the uploaded file
+                '500':
+                    description: Error processing file upload
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    error:
+                                        type: string
+    /files/{file_id}:
+        get:
+            summary: Get text extraction result
+            parameters:
+                -   name: file_id
+                    in: path
+                    required: true
+                    schema:
+                        type: string
+                    description: Unique identifier of the file
+            responses:
+                '200':
+                    description: Text extraction result
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    file_id:
+                                        type: string
+                                        description: Unique identifier of the file
+                                    status:
+                                        type: string
+                                        description: Status of the file processing
+                                    text:
+                                        type: string
+                                        description: Extracted text from the file
+                '404':
+                    description: File not found
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    error:
+                                        type: string
+                                        description: Error message indicating the file was not found

@@ -1,0 +1,133 @@
+org: illiatest
+service: serverless-textract-090720241957
+
+provider:
+    name: aws
+    runtime: python3.8
+    stage: dev
+    region: us-east-1
+    environment:
+        FILES_TABLE: ${self:service}-${opt:stage, self:provider.stage}-files
+        BUCKET_NAME: ${self:service}-${opt:stage, self:provider.stage}-bucket-${self:custom.stageSuffix}
+    apiGateway:
+        binaryMediaTypes:
+          - 'application/pdf'
+custom:
+    stageSuffix: ${opt:stage, self:provider.stage}-${self:provider.region}
+    pythonRequirements:
+        dockerizePip: true
+        zip: true
+
+plugins:
+    - serverless-plugin-common-excludes
+    - serverless-python-requirements
+
+package:
+  exclude:
+    - '**/*'
+
+  include:
+    - '*.py'
+    - 'boto3'
+    - 'requests'
+
+functions:
+    createFile:
+        handler: handler.create_file
+        events:
+            -   http:
+                    path: files
+                    method: post
+                    integration: lambda
+                    request:
+                        template:
+                            application/pdf: |
+                                #set($input.json('$'))
+                                {
+                                  "body": "$util.base64Encode($input.body)"
+                                }
+                    response:
+                        headers:
+                            Content-Type: "'application/json'"
+    processFile:
+        handler: handler.process_file
+        events:
+            -   s3:
+                    bucket: ${self:provider.environment.BUCKET_NAME}
+                    event: s3:ObjectCreated:*
+                    existing: true
+    makeCallback:
+        handler: handler.make_callback
+        events:
+            -   stream:
+                    type: dynamodb
+                    arn:
+                        Fn::GetAtt:
+                            - FilesTable
+                            - StreamArn
+    getFile:
+        handler: handler.get_file
+        events:
+            -   http:
+                    path: files/{file_id}
+                    method: get
+
+resources:
+    Resources:
+        FilesTable:
+            Type: AWS::DynamoDB::Table
+            Properties:
+                TableName: ${self:provider.environment.FILES_TABLE}
+                AttributeDefinitions:
+                    -   AttributeName: file_id
+                        AttributeType: S
+                KeySchema:
+                    -   AttributeName: file_id
+                        KeyType: HASH
+                ProvisionedThroughput:
+                    ReadCapacityUnits: 5
+                    WriteCapacityUnits: 5
+                StreamSpecification:
+                    StreamViewType: NEW_IMAGE
+        S3Bucket:
+            Type: AWS::S3::Bucket
+            Properties:
+                BucketName: ${self:provider.environment.BUCKET_NAME}
+
+        IamRoleLambdaExecution:
+            Type: AWS::IAM::Role
+            Properties:
+                AssumeRolePolicyDocument:
+                    Version: '2012-10-17'
+                    Statement:
+                        -   Effect: Allow
+                            Principal:
+                                Service: lambda.amazonaws.com
+                            Action: sts:AssumeRole
+                Policies:
+                    -   PolicyName: lambda-execution-policy
+                        PolicyDocument:
+                            Version: '2012-10-17'
+                            Statement:
+                                -   Effect: Allow
+                                    Action:
+                                        - logs:CreateLogGroup
+                                        - logs:CreateLogStream
+                                        - logs:PutLogEvents
+                                        - dynamodb:UpdateItem
+                                        - dynamodb:PutItem
+                                        - dynamodb:GetItem
+                                    Resource:
+                                        - "arn:aws:logs:*:*:*"
+                                        - "arn:aws:dynamodb:*:*:table/${self:provider.environment.FILES_TABLE}"
+                                        - "arn:aws:dynamodb:*:*:table/${self:provider.environment.FILES_TABLE}/stream/*"
+                                -   Effect: Allow
+                                    Action:
+                                        - s3:PutObject
+                                        - s3:GetObject
+                                    Resource:
+                                        - "arn:aws:s3:::${self:provider.environment.BUCKET_NAME}/*"
+                                -   Effect: Allow
+                                    Action:
+                                        - textract:DetectDocumentText
+                                    Resource: "*"
