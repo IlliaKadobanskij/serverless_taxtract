@@ -1,3 +1,9 @@
+# must be called as we're using zipped requirements
+try:
+    import unzip_requirements
+except ImportError:
+    pass
+
 import base64
 import json
 import uuid
@@ -31,7 +37,7 @@ def create_file(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     :return: A dictionary containing the HTTP status code and response body.
     """
     try:
-        body = json.loads(event['body'])
+        body = event['body']
         file_content = base64.b64decode(body['file'])
 
         # Generate a unique file ID
